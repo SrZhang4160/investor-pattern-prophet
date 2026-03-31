@@ -1,0 +1,94 @@
+{
+  "version": "1.0",
+  "owner": {
+    "name": "Alan",
+    "created_at": "2026-03-30T15:24:35.125612+00:00",
+    "last_updated": "2026-03-30T15:24:35.125612+00:00"
+  },
+  "research_frameworks": {
+    "company_deep_dive": {
+      "description": "个股深度分析",
+      "dimensions": [],
+      "sequence": [],
+      "notes": ""
+    },
+    "industry_landscape": {
+      "description": "行业/板块全景",
+      "dimensions": [],
+      "sequence": [],
+      "notes": ""
+    },
+    "macro_theme": {
+      "description": "宏观主题分析",
+      "dimensions": [],
+      "sequence": [],
+      "notes": ""
+    },
+    "comparative_analysis": {
+      "description": "多标的对比",
+      "dimensions": [],
+      "sequence": [],
+      "notes": ""
+    },
+    "event_driven": {
+      "description": "事件驱动分析（财报、并购、政策）",
+      "dimensions": [],
+      "sequence": [],
+      "notes": ""
+    }
+  },
+  "data_preferences": {
+    "lookback_period": {
+      "default": "trailing_12_months",
+      "notes": ""
+    },
+    "preferred_sources": [
+      {
+        "name": "SEC EDGAR",
+        "priority": 1,
+        "use_for": [
+          "财务报表",
+          "风险因素"
+        ]
+      },
+      {
+        "name": "Yahoo Finance",
+        "priority": 2,
+        "use_for": [
+          "快速财务概览",
+          "分析师预期"
+        ]
+      },
+      {
+        "name": "FRED",
+        "priority": 1,
+        "use_for": [
+          "宏观数据",
+          "利率"
+        ]
+      }
+    ],
+    "excluded_sources": [],
+    "metric_definitions": {},
+    "notes": ""
+  },
+  "judgment_rules": [],
+  "workflow_preferences": {
+    "language": "zh-CN",
+    "output_format": "structured_markdown",
+    "notes": ""
+  },
+  "exclusions": {
+    "never_include": [],
+    "never_recommend": [
+      {
+        "item": "买卖推荐",
+        "reason": "Agent 不做投资建议"
+      }
+    ]
+  },
+  "session_history": [],
+  "pattern_evolution": {
+    "changes": []
+  }
+}
