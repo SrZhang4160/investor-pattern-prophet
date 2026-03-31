@@ -18,6 +18,7 @@ from data_collector import (fetch_profile, fetch_key_metrics, fetch_financials, 
                             fetch_all_stock_data, get_relevant_data_for_dimension,
                             research_dimension, check_dependencies)
 import claude_client
+from github_sync import github_sync
 
 # ---------- Config ----------
 
@@ -26,7 +27,7 @@ TRAINER_PASSWORD = os.environ.get("TRAINER_PASSWORD", "alanPattern")  # Change i
 
 st.set_page_config(
     page_title="投研助手 — Investment Research Agent",
-    page_icon="📊",
+    page_icon="",
     layout="wide"
 )
 
@@ -63,7 +64,7 @@ pm: PatternMemory = st.session_state.pm
 # ---------- Sidebar ----------
 
 def sidebar():
-    st.sidebar.title("📊 投研助手")
+    st.sidebar.title("投研助手")
 
     if pm.exists():
         s = pm.summary()
@@ -79,15 +80,15 @@ def sidebar():
         st.sidebar.subheader("选择身份")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            if st.sidebar.button("🎓 训练者", use_container_width=True):
+            if st.sidebar.button("训练者", use_container_width=True):
                 st.session_state.role = "pending_trainer"
                 st.rerun()
         with col2:
-            if st.sidebar.button("👤 使用者", use_container_width=True):
+            if st.sidebar.button("使用者", use_container_width=True):
                 st.session_state.role = "user"
                 st.rerun()
     else:
-        role_label = "🎓 训练者" if st.session_state.role == "trainer" else "👤 使用者"
+        role_label = "训练者" if st.session_state.role == "trainer" else "使用者"
         st.sidebar.info(f"当前身份: {role_label}")
         if st.sidebar.button("切换身份"):
             st.session_state.role = None
@@ -103,14 +104,14 @@ def sidebar():
     if pm.exists():
         export_data = pm.export_json()
         st.sidebar.download_button(
-            "📤 导出 Pattern",
+            "导出 Pattern",
             data=export_data,
             file_name=f"pattern_memory_{datetime.now().strftime('%Y%m%d')}.json",
             mime="application/json"
         )
 
     # Import
-    uploaded = st.sidebar.file_uploader("📥 导入 Pattern", type=["json"], key="import_pattern")
+    uploaded = st.sidebar.file_uploader("导入 Pattern", type=["json"], key="import_pattern")
     if uploaded:
         try:
             imported = json.loads(uploaded.read().decode("utf-8"))
@@ -133,6 +134,21 @@ def sidebar():
     with st.sidebar.expander("系统状态"):
         st.write(f"yfinance: {'✅' if deps['yfinance'] else '❌ pip install yfinance'}")
         st.write(f"Claude API: {'✅' if claude_ok else '❌ 设置 ANTHROPIC_API_KEY'}")
+        st.write(f"GitHub 同步: {'✅ ' + github_sync.repo if github_sync.is_configured() else '未配置'}")
+
+    # GitHub sync config
+    with st.sidebar.expander("GitHub 同步设置"):
+        gh_token = st.text_input("GitHub Token", value=github_sync.token, type="password", key="gh_token",
+                                  help="需要 repo 权限的 Personal Access Token")
+        gh_repo = st.text_input("仓库 (owner/repo)", value=github_sync.repo, key="gh_repo",
+                                 placeholder="例如: username/investment-patterns")
+        gh_branch = st.text_input("分支", value=github_sync.branch, key="gh_branch")
+        gh_path = st.text_input("文件路径", value=github_sync.file_path, key="gh_path")
+
+        if st.button("保存 GitHub 配置"):
+            github_sync.configure(gh_token, gh_repo, gh_branch, gh_path)
+            github_sync.save_config_to_env()
+            st.success("GitHub 配置已保存")
 
 
 sidebar()
@@ -141,7 +157,7 @@ sidebar()
 # ---------- Trainer Auth ----------
 
 if st.session_state.role == "pending_trainer":
-    st.title("🔐 训练者验证")
+    st.title("训练者验证")
     st.caption("只有 pattern 所有者可以训练和修改 pattern。")
     pwd = st.text_input("输入训练者密码：", type="password")
     if st.button("验证"):
@@ -156,19 +172,19 @@ if st.session_state.role == "pending_trainer":
 # ---------- No Role Selected ----------
 
 if st.session_state.role is None:
-    st.title("📊 投研助手 — Investment Research Agent")
+    st.title("投研助手 — Investment Research Agent")
     st.markdown("""
     一个学习投资研究 pattern 的 AI 助手。
 
     **两种使用方式：**
 
-    **🎓 训练者** — 做真实的投资研究，agent 边帮你查数据边学习你的研究习惯
+    **训练者** — 做真实的投资研究，agent 边帮你查数据边学习你的研究习惯
     （框架、数据偏好、判断规则）。训练的 pattern 可以导出分享。
 
-    **👤 使用者** — 输入投资 topic，按照训练者的研究框架获得引导式研究，
+    **使用者** — 输入投资 topic，按照训练者的研究框架获得引导式研究，
     包括推荐维度、数据采集、规则判断。
 
-    👈 从左侧选择身份开始。
+    从左侧选择身份开始。
     """)
     st.stop()
 
@@ -193,7 +209,7 @@ step = st.session_state.step
 
 if step == 0:
     if not pm.exists() and is_trainer:
-        st.title("🚀 初始化 Pattern Memory")
+        st.title("初始化 Pattern Memory")
         name = st.text_input("你的名字（Pattern 所有者）：", value="Sharon")
         if st.button("创建 Pattern Memory"):
             pm.initialize(name)
@@ -202,8 +218,8 @@ if step == 0:
             st.session_state.step = 1
             st.rerun()
     elif not pm.exists() and not is_trainer:
-        st.title("📊 投研助手")
-        st.warning("还没有训练过的 Pattern。请导入一个 Pattern 文件（左侧 📥 导入），或联系训练者获取。")
+        st.title("投研助手")
+        st.warning("还没有训练过的 Pattern。请导入一个 Pattern 文件（左侧「导入」），或联系训练者获取。")
         st.stop()
     else:
         st.session_state.step = 1
@@ -213,7 +229,7 @@ if step == 0:
 # ---------- Step 1: Topic & Scope ----------
 
 elif step == 1:
-    st.title("📋 Step 1 — 研究主题与范围")
+    st.title("Step 1 — 研究主题与范围")
 
     if pm.exists() and not is_trainer:
         owner = pm.get_owner()
@@ -249,9 +265,9 @@ elif step == 1:
     # Show which are from pattern vs defaults
     pattern_dims = pm.get_dimension_details(rtype)
     if pattern_dims:
-        st.caption(f"📝 以下维度来自训练者的研究 pattern（{len(pattern_dims)} 个已学习维度）")
+        st.caption(f"以下维度来自训练者的研究 pattern（{len(pattern_dims)} 个已学习维度）")
     else:
-        st.caption("📝 使用默认维度列表（训练后会根据你的偏好调整）")
+        st.caption("使用默认维度列表（训练后会根据你的偏好调整）")
 
     selected = []
     cols = st.columns(2)
@@ -270,7 +286,7 @@ elif step == 1:
 
     # Claude suggestions
     if st.session_state.topic and claude_client.is_available():
-        with st.expander("🤖 AI 建议额外维度"):
+        with st.expander("AI 建议额外维度"):
             if st.button("获取 AI 建议"):
                 with st.spinner("分析中..."):
                     suggestions = claude_client.suggest_dimensions(
@@ -283,7 +299,7 @@ elif step == 1:
 
     st.divider()
 
-    if st.button("✅ 确认维度，开始采集数据", type="primary", disabled=not st.session_state.topic):
+    if st.button("确认维度，开始采集数据", type="primary", disabled=not st.session_state.topic):
         st.session_state.selected_dims = selected
         st.session_state.dim_data = {}
         st.session_state.current_dim_idx = 0
@@ -295,7 +311,7 @@ elif step == 1:
 # ---------- Step 2: Data Collection ----------
 
 elif step == 2:
-    st.title("📡 Step 2 — 数据采集与分析")
+    st.title("Step 2 — 数据采集与分析")
 
     dims = st.session_state.selected_dims
     current_idx = st.session_state.current_dim_idx
@@ -304,7 +320,7 @@ elif step == 2:
 
     # --- Step 2a: One-time batch fetch all stock data if ticker provided ---
     if ticker and not st.session_state.all_stock_data:
-        with st.spinner(f"🔄 正在从 Yahoo Finance 批量获取 **{ticker}** 的所有数据..."):
+        with st.spinner(f"正在从 Yahoo Finance 批量获取 {ticker} 的所有数据..."):
             all_data = fetch_all_stock_data(ticker)
         if "error" in all_data and len(all_data) == 1:
             st.error(f"获取失败: {all_data['error']}")
@@ -316,14 +332,14 @@ elif step == 2:
     st.progress(progress, text=f"进度: {current_idx}/{len(dims)} 个维度")
 
     if current_idx >= len(dims):
-        st.success("🎉 所有维度数据采集完成！")
-        if st.button("➡️ 进入下一步: Pattern 引申建议", type="primary"):
+        st.success("所有维度数据采集完成！")
+        if st.button("进入下一步: Pattern 引申建议", type="primary"):
             st.session_state.step = 3
             st.rerun()
         st.stop()
 
     dim = dims[current_idx]
-    st.subheader(f"📌 当前维度: {dim} ({current_idx + 1}/{len(dims)})")
+    st.subheader(f"当前维度: {dim} ({current_idx + 1}/{len(dims)})")
 
     # --- Keys ---
     research_key = f"research_result_{current_idx}_{dim}"
@@ -334,7 +350,7 @@ elif step == 2:
         st.session_state[research_key] = None
 
     if st.session_state[research_key] is None:
-        with st.spinner(f"🔍 正在为「{dim}」全面采集数据（财务数据 + 网页搜索 + 新闻）..."):
+        with st.spinner(f"正在为「{dim}」全面采集数据（财务数据 + 网页搜索 + 新闻）..."):
             result = research_dimension(
                 topic=topic, dimension=dim, ticker=ticker,
                 all_stock_data=st.session_state.all_stock_data
@@ -350,7 +366,7 @@ elif step == 2:
         st.session_state[analysis_key] = ""
 
     if claude_client.is_available() and not st.session_state[analysis_key]:
-        with st.spinner(f"🤖 AI 正在基于 {len(research.get('citations', []))} 条来源深度分析「{dim}」..."):
+        with st.spinner(f"AI 正在基于 {len(research.get('citations', []))} 条来源深度分析「{dim}」..."):
             analysis = claude_client.analyze_dimension_deep(dim, research, topic)
             st.session_state[analysis_key] = analysis
             st.session_state.dim_data[dim]["ai_analysis"] = analysis
@@ -373,7 +389,7 @@ elif step == 2:
 
     # --- Collapsed: raw sources for verification ---
     total_sources = len(research.get("citations", []))
-    with st.expander(f"📎 原始数据来源 ({total_sources} 条) — 点击展开验证"):
+    with st.expander(f"原始数据来源 ({total_sources} 条) — 点击展开验证"):
         if research.get("financial_data"):
             st.write("**财务数据:**")
             for section_name, section_data in research["financial_data"].items():
@@ -399,7 +415,7 @@ elif step == 2:
             st.caption(", ".join(research["search_queries_used"]))
 
     # --- Manual supplement ---
-    with st.expander("✏️ 手动补充数据"):
+    with st.expander("手动补充数据"):
         manual_data = st.text_area(
             f"为「{dim}」添加数据点（每行一条，格式：数据内容 | 来源名称 | URL）",
             height=100, key=f"manual_{dim}"
@@ -409,7 +425,7 @@ elif step == 2:
     st.divider()
     col1, col2, col3 = st.columns(3)
     with col1:
-        completeness = st.selectbox("完整性", ["✅ 完整", "⚠️ 部分", "❌ 不可用"], key=f"comp_{dim}")
+        completeness = st.selectbox("完整性", ["完整", "部分", "不可用"], key=f"comp_{dim}")
     with col2:
         freshness = st.text_input("时效性", placeholder="例如: 2025-Q4", key=f"fresh_{dim}")
     with col3:
@@ -419,7 +435,7 @@ elif step == 2:
     st.divider()
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("✅ 数据可用，下一个维度", type="primary"):
+        if st.button("数据可用，下一个维度", type="primary"):
             if manual_data:
                 manual_entries = []
                 for line in manual_data.strip().split("\n"):
@@ -437,7 +453,7 @@ elif step == 2:
             st.session_state.current_dim_idx += 1
             st.rerun()
     with col2:
-        if st.button("⏭️ 跳过此维度"):
+        if st.button("跳过此维度"):
             st.session_state.user_actions.append(f"跳过维度「{dim}」")
             st.session_state.current_dim_idx += 1
             st.rerun()
@@ -450,7 +466,7 @@ elif step == 2:
 # ---------- Step 3: Pattern Extensions ----------
 
 elif step == 3:
-    st.title("🔍 Step 3 — Pattern 引申建议")
+    st.title("Step 3 — Pattern 引申建议")
 
     topic = st.session_state.topic
     rtype = st.session_state.research_type
@@ -480,7 +496,7 @@ elif step == 3:
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("➡️ 跳过引申，进入规则判断", type="primary"):
+        if st.button("跳过引申，进入规则判断", type="primary"):
             st.session_state.step = 4
             st.rerun()
     with col2:
@@ -495,7 +511,7 @@ elif step == 3:
 # ---------- Step 4: Judgment Rules ----------
 
 elif step == 4:
-    st.title("⚖️ Step 4 — 规则判断")
+    st.title("Step 4 — 规则判断")
 
     topic = st.session_state.topic
     rules = pm.get_active_rules() if pm.exists() else []
@@ -521,7 +537,7 @@ elif step == 4:
     # Trainer can add new rules
     if is_trainer:
         st.divider()
-        st.subheader("➕ 添加新规则")
+        st.subheader("添加新规则")
         st.caption("基于这次研究，你有没有常用的判断逻辑？")
 
         new_rule_name = st.text_input("规则名称", placeholder="例如：FCF 收益率筛选")
@@ -533,14 +549,16 @@ elif step == 4:
         if st.button("保存规则") and new_rule_name and new_rule_cond:
             pm.add_rule(new_rule_name, new_rule_cond, new_rule_action,
                         confidence="high", notes=new_rule_notes)
-            pm.save_with_backup()
+            sync_result = pm.save_with_backup(sync_topic=f"新规则: {new_rule_name}")
             st.session_state.pm = PatternMemory(PATTERN_FILE)
             st.session_state.user_actions.append(f"新增规则: {new_rule_name} ({new_rule_cond})")
             st.success(f"规则「{new_rule_name}」已保存！")
+            if sync_result and sync_result["ok"]:
+                st.success("已同步到 GitHub")
             st.rerun()
 
     st.divider()
-    if st.button("➡️ 进入研究总结", type="primary"):
+    if st.button("进入研究总结", type="primary"):
         st.session_state.step = 5
         st.rerun()
 
@@ -548,7 +566,7 @@ elif step == 4:
 # ---------- Step 5: Summary ----------
 
 elif step == 5:
-    st.title("📝 Step 5 — 研究总结")
+    st.title("Step 5 — 研究总结")
 
     topic = st.session_state.topic
     rtype = st.session_state.research_type
@@ -561,7 +579,7 @@ elif step == 5:
 
     # Generate summary
     if claude_client.is_available():
-        if st.button("🤖 生成 AI 研究总结"):
+        if st.button("生成 AI 研究总结"):
             with st.spinner("生成中..."):
                 summary = claude_client.generate_summary(
                     topic, RESEARCH_TYPES[rtype],
@@ -577,14 +595,14 @@ elif step == 5:
 
         # Download summary
         st.download_button(
-            "📄 下载研究报告",
+            "下载研究报告",
             data=st.session_state.summary,
             file_name=f"research_{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.md",
             mime="text/markdown"
         )
 
     st.divider()
-    if st.button("➡️ 完成研究" + (" & 更新 Pattern" if is_trainer else ""), type="primary"):
+    if st.button("完成研究" + (" & 更新 Pattern" if is_trainer else ""), type="primary"):
         st.session_state.step = 6
         st.rerun()
 
@@ -592,14 +610,14 @@ elif step == 5:
 # ---------- Step 6: Pattern Update (Trainer only) ----------
 
 elif step == 6:
-    st.title("🧠 Step 6 — " + ("Pattern 学习" if is_trainer else "研究完成"))
+    st.title("Step 6 — " + ("Pattern 学习" if is_trainer else "研究完成"))
 
     topic = st.session_state.topic
     rtype = st.session_state.research_type
     dims = st.session_state.selected_dims
 
     if is_trainer and pm.exists():
-        st.subheader("📝 本次学到的 Pattern")
+        st.subheader("本次学到的 Pattern")
 
         # Infer patterns from user actions
         if claude_client.is_available() and st.session_state.user_actions:
@@ -611,62 +629,141 @@ elif step == 6:
 
         st.divider()
 
-        # Auto-updates
-        st.subheader("建议的 Pattern 更新：")
+        # ---- Section 1: Dimension Updates ----
+        st.subheader("维度更新")
 
-        # Check for new dimensions to add
         current_dims = pm.get_dimensions(rtype)
         new_dims = [d for d in dims if d not in current_dims and d not in DEFAULT_DIMENSIONS.get(rtype, [])]
-        if new_dims:
-            st.write(f"**新增维度** ({rtype}): {', '.join(new_dims)}")
+        skipped_dims = [a.split("「")[1].split("」")[0] for a in st.session_state.user_actions if "跳过维度" in a]
 
-        # Sequence update
+        if new_dims:
+            st.write(f"**新增维度**: {', '.join(new_dims)}")
+        if skipped_dims:
+            st.write(f"**本次跳过**: {', '.join(skipped_dims)}")
         st.write(f"**研究顺序**: {' → '.join(dims)}")
 
-        # Session feedback
-        feedback = st.text_area("本次研究的反馈/备注：", placeholder="例如：这个 topic 更需要关注供应链数据")
+        # Let trainer adjust dimension priority
+        with st.expander("调整维度优先级"):
+            for d in dims:
+                priority = st.select_slider(
+                    d, options=["low", "medium", "high"],
+                    value="high" if d not in skipped_dims else "low",
+                    key=f"priority_{d}"
+                )
 
+        # ---- Section 2: Rule Management ----
+        st.divider()
+        st.subheader("规则管理")
+
+        existing_rules = pm.get_active_rules()
+        if existing_rules:
+            st.write(f"**已有 {len(existing_rules)} 条规则：**")
+            rules_to_deactivate = []
+            for r in existing_rules:
+                col_r1, col_r2 = st.columns([4, 1])
+                with col_r1:
+                    st.write(f"• **{r['name']}**: `{r['condition']}` → {r['action']}")
+                with col_r2:
+                    if st.checkbox("停用", key=f"deactivate_{r['id']}"):
+                        rules_to_deactivate.append(r['id'])
+
+        # Add new rule
+        st.write("**添加新规则：**")
+        new_rule_name = st.text_input("规则名称", placeholder="例如：FCF 收益率筛选", key="step6_rule_name")
+        new_rule_cond = st.text_input("条件", placeholder="例如：FCF_yield > 8%", key="step6_rule_cond")
+        new_rule_action = st.selectbox("满足时动作",
+                                        ["flag_for_deeper_analysis", "flag_as_risk", "flag_as_positive_signal", "skip"],
+                                        key="step6_rule_action")
+        new_rule_notes = st.text_input("备注", placeholder="为什么这个规则重要？", key="step6_rule_notes")
+
+        # ---- Section 3: Feedback ----
+        st.divider()
+        feedback = st.text_area("本次研究的反馈/备注：",
+                                placeholder="例如：这个 topic 更需要关注供应链数据；下次 TAM 数据应该用 bottom-up 方法",
+                                key="step6_feedback")
+
+        # ---- Save ----
+        st.divider()
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ 保存 Pattern 更新", type="primary"):
-                # Add new dimensions
+            if st.button("保存 Pattern 更新", type="primary"):
+                # Add new dimensions with priority
                 for d in new_dims:
-                    pm.add_dimension(rtype, d, notes=f"从「{topic}」研究中学习")
+                    priority = st.session_state.get(f"priority_{d}", "medium")
+                    pm.add_dimension(rtype, d, priority=priority, notes=f"从「{topic}」研究中学习")
 
                 # Update sequence
                 pm.update_sequence(rtype, dims)
+
+                # Deactivate rules
+                if existing_rules:
+                    rules_to_deactivate = [r['id'] for r in existing_rules
+                                           if st.session_state.get(f"deactivate_{r['id']}", False)]
+                    for rid in rules_to_deactivate:
+                        pm.deactivate_rule(rid)
+
+                # Add new rule if provided
+                if new_rule_name and new_rule_cond:
+                    pm.add_rule(new_rule_name, new_rule_cond, new_rule_action,
+                                confidence="high", notes=new_rule_notes)
 
                 # Log session
                 pm.add_session(
                     topic, rtype, dims,
                     [r["id"] for r in pm.get_active_rules()],
-                    feedback
+                    feedback or ""
                 )
 
-                pm.save_with_backup()
+                sync_result = pm.save_with_backup(sync_topic=topic)
                 st.session_state.pm = PatternMemory(PATTERN_FILE)
-                st.success("Pattern 已更新并保存！")
+
+                # GitHub sync feedback
+                if sync_result:
+                    if sync_result["ok"]:
+                        st.success(f"GitHub 同步成功: {sync_result.get('url', '')}")
+                    else:
+                        st.warning(f"GitHub 同步失败: {sync_result['message']}")
+
+                # Summary of what changed
+                changes = []
+                if new_dims:
+                    changes.append(f"新增 {len(new_dims)} 个维度")
+                if existing_rules and rules_to_deactivate:
+                    changes.append(f"停用 {len(rules_to_deactivate)} 条规则")
+                if new_rule_name:
+                    changes.append(f"新增规则「{new_rule_name}」")
+                changes.append("更新研究顺序")
+
+                st.success(f"Pattern 已更新！{' | '.join(changes)}")
                 st.balloons()
 
                 # Reset for next research
-                st.session_state.step = 0
-                st.session_state.topic = ""
-                st.session_state.dim_data = {}
-                st.session_state.user_actions = []
-                st.session_state.selected_dims = []
-                st.session_state.ticker = ""
-                st.session_state.all_stock_data = {}
+                for key in ["step", "topic", "dim_data", "user_actions", "selected_dims",
+                            "ticker", "all_stock_data", "rule_results", "summary",
+                            "extensions", "open_questions"]:
+                    if key == "step":
+                        st.session_state[key] = 0
+                    elif key in ("dim_data", "all_stock_data"):
+                        st.session_state[key] = {}
+                    elif key in ("user_actions", "selected_dims", "open_questions"):
+                        st.session_state[key] = []
+                    else:
+                        st.session_state[key] = ""
                 st.rerun()
 
         with col2:
             if st.button("跳过，不保存"):
-                st.session_state.step = 0
-                st.session_state.topic = ""
-                st.session_state.dim_data = {}
-                st.session_state.user_actions = []
-                st.session_state.selected_dims = []
-                st.session_state.ticker = ""
-                st.session_state.all_stock_data = {}
+                for key in ["step", "topic", "dim_data", "user_actions", "selected_dims",
+                            "ticker", "all_stock_data", "rule_results", "summary",
+                            "extensions", "open_questions"]:
+                    if key == "step":
+                        st.session_state[key] = 0
+                    elif key in ("dim_data", "all_stock_data"):
+                        st.session_state[key] = {}
+                    elif key in ("user_actions", "selected_dims", "open_questions"):
+                        st.session_state[key] = []
+                    else:
+                        st.session_state[key] = ""
                 st.rerun()
 
     else:
@@ -674,13 +771,13 @@ elif step == 6:
         st.success("研究完成！")
         if st.session_state.summary:
             st.download_button(
-                "📄 下载研究报告",
+                "下载研究报告",
                 data=st.session_state.summary,
                 file_name=f"research_{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.md",
                 mime="text/markdown"
             )
 
-        if st.button("🔄 开始新的研究"):
+        if st.button("开始新的研究"):
             st.session_state.step = 0
             st.session_state.topic = ""
             st.session_state.dim_data = {}

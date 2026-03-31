@@ -1,0 +1,6 @@
+.env
+pattern_memory.json
+pattern_memory.json.bak
+__pycache__/
+*.pyc
+.DS_Store

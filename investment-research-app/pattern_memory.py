@@ -262,10 +262,27 @@ class PatternMemory:
             "detail": detail
         })
 
-    def save_with_backup(self):
+    def save_with_backup(self, sync_topic: str = "") -> Optional[dict]:
+        """Save pattern with backup, then auto-push to GitHub if configured.
+
+        Args:
+            sync_topic: Optional topic for the GitHub commit message.
+
+        Returns:
+            GitHub sync result dict, or None if not configured.
+        """
         self._backup()
         self.data["owner"]["last_updated"] = datetime.now(timezone.utc).isoformat()
         self._save()
+
+        # Auto-push to GitHub
+        try:
+            from github_sync import github_sync
+            if github_sync.is_configured():
+                return github_sync.push_pattern(self.data, session_topic=sync_topic)
+        except Exception:
+            pass
+        return None
 
     # --- Export / Import ---
 
