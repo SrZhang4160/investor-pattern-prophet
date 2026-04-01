@@ -284,23 +284,54 @@ elif step == 1:
             if d and d not in selected:
                 selected.append(d)
 
-    # Claude suggestions
+    # Claude suggestions — persist in session state, render with checkboxes
+    if "ai_suggested_dims" not in st.session_state:
+        st.session_state.ai_suggested_dims = []
+
     if st.session_state.topic and claude_client.is_available():
-        with st.expander("AI 建议额外维度"):
+        with st.expander("AI 建议额外维度", expanded=bool(st.session_state.ai_suggested_dims)):
             if st.button("获取 AI 建议"):
                 with st.spinner("分析中..."):
-                    suggestions = claude_client.suggest_dimensions(
+                    raw = claude_client.suggest_dimensions(
                         st.session_state.topic,
                         RESEARCH_TYPES[rtype],
                         selected,
                         json.dumps(pm.get_active_rules(), ensure_ascii=False) if pm.exists() else ""
                     )
-                    st.markdown(suggestions)
+                    # Parse: each line "维度名称 — 说明"
+                    parsed = []
+                    for line in raw.strip().split("\n"):
+                        line = line.strip().lstrip("-•*0123456789.） ")
+                        if not line:
+                            continue
+                        if " — " in line:
+                            name, desc = line.split(" — ", 1)
+                        elif "—" in line:
+                            name, desc = line.split("—", 1)
+                        elif " - " in line:
+                            name, desc = line.split(" - ", 1)
+                        else:
+                            name, desc = line, ""
+                        name = name.strip()
+                        if name and name not in selected:
+                            parsed.append({"name": name, "desc": desc.strip()})
+                    st.session_state.ai_suggested_dims = parsed
+                    st.rerun()
+
+            if st.session_state.ai_suggested_dims:
+                for item in st.session_state.ai_suggested_dims:
+                    checked = st.checkbox(
+                        f"{item['name']} — {item['desc']}" if item['desc'] else item['name'],
+                        key=f"ai_dim_{item['name']}"
+                    )
+                    if checked and item['name'] not in selected:
+                        selected.append(item['name'])
 
     st.divider()
 
     if st.button("确认维度，开始采集数据", type="primary", disabled=not st.session_state.topic):
         st.session_state.selected_dims = selected
+        st.session_state.ai_suggested_dims = []  # clear for next round
         st.session_state.dim_data = {}
         st.session_state.current_dim_idx = 0
         st.session_state.user_actions.append(f"选择了研究类型 {RESEARCH_TYPES[rtype]}，维度: {', '.join(selected)}")
@@ -339,7 +370,14 @@ elif step == 2:
         st.stop()
 
     dim = dims[current_idx]
+    refinement_count_key = f"refinement_count_{current_idx}_{dim}"
+    if refinement_count_key not in st.session_state:
+        st.session_state[refinement_count_key] = 0
+    refine_count = st.session_state[refinement_count_key]
+
     st.subheader(f"当前维度: {dim} ({current_idx + 1}/{len(dims)})")
+    if refine_count > 0:
+        st.caption(f"已迭代优化 {refine_count} 次")
 
     # --- Keys ---
     research_key = f"research_result_{current_idx}_{dim}"
@@ -350,7 +388,7 @@ elif step == 2:
         st.session_state[research_key] = None
 
     if st.session_state[research_key] is None:
-        with st.spinner(f"正在为「{dim}」全面采集数据（财务数据 + 网页搜索 + 新闻）..."):
+        with st.spinner(f"正在为「{dim}」全面采集数据（财务 + 多引擎搜索 + 新闻 + SEC）..."):
             result = research_dimension(
                 topic=topic, dimension=dim, ticker=ticker,
                 all_stock_data=st.session_state.all_stock_data
@@ -361,7 +399,7 @@ elif step == 2:
 
     research = st.session_state[research_key]
 
-    # --- Phase 2: Auto AI analysis (no button needed) ---
+    # --- Phase 2: Auto AI analysis ---
     if analysis_key not in st.session_state:
         st.session_state[analysis_key] = ""
 
@@ -377,7 +415,6 @@ elif step == 2:
         st.markdown(st.session_state[analysis_key])
     else:
         st.warning("Claude API 未配置，无法生成自动分析。以下为原始数据。")
-        # Fallback: show raw financial data
         if research.get("financial_data"):
             for section_name, section_data in research["financial_data"].items():
                 st.write(f"**{section_name}**")
@@ -400,7 +437,8 @@ elif step == 2:
         if research.get("web_results"):
             st.write("**网页搜索:**")
             for r in research["web_results"]:
-                st.caption(f"• {r.get('title', 'N/A')} — {r.get('url', '')}")
+                engine_tag = f" [{r.get('engine', '')}]" if r.get("engine") else ""
+                st.caption(f"• {r.get('title', 'N/A')}{engine_tag} — {r.get('url', '')}")
 
         if research.get("news_results"):
             st.write("**新闻:**")
@@ -410,9 +448,98 @@ elif step == 2:
                     meta += f" ({str(n['date'])[:10]})"
                 st.caption(f"• {n.get('title', 'N/A')} — {meta} — {n.get('url', '')}")
 
+        if research.get("sec_results"):
+            st.write("**SEC Filings:**")
+            for s in research["sec_results"]:
+                st.caption(f"• {s.get('title', 'N/A')} — {s.get('url', '')}")
+
         if research.get("search_queries_used"):
             st.write("**搜索关键词:**")
             st.caption(", ".join(research["search_queries_used"]))
+
+    # --- Show refinement history ---
+    if research.get("refinement_rounds"):
+        with st.expander(f"迭代历史 ({len(research['refinement_rounds'])} 轮)"):
+            for i, rnd in enumerate(research["refinement_rounds"], 1):
+                st.write(f"**第 {i} 轮反馈**: {rnd['feedback']}")
+                st.caption(f"新增搜索: {', '.join(rnd['new_queries'])}")
+                st.caption(f"新增结果: {len(rnd.get('new_web_results', []))} 网页 + {len(rnd.get('new_news_results', []))} 新闻")
+
+    # ============================================================
+    #  TRAINER FEEDBACK & REFINEMENT (core iterative loop)
+    # ============================================================
+    if is_trainer:
+        st.divider()
+        st.subheader("数据反馈 — 告诉我缺什么、哪里不够")
+        st.caption("输入反馈后点击「补充搜索」，系统会针对性搜索更多数据并重新分析。每轮反馈都会被记录到 pattern 中。")
+
+        feedback = st.text_area(
+            "这个维度的数据还缺什么？需要哪些方面更深入？",
+            placeholder="例如：缺少供应商集中度数据、需要更多同比增长对比、想看最近一个季度的毛利率变化、需要和AMD对比",
+            height=80, key=f"feedback_{dim}_{refine_count}"
+        )
+
+        fb_col1, fb_col2 = st.columns([1, 1])
+        with fb_col1:
+            if st.button("补充搜索", type="secondary", disabled=not feedback):
+                with st.spinner(f"根据反馈补充搜索: {feedback[:50]}..."):
+                    from data_collector import refine_dimension
+                    updated = refine_dimension(
+                        existing_result=research,
+                        feedback=feedback,
+                        topic=topic,
+                        dimension=dim,
+                        ticker=ticker,
+                        all_stock_data=st.session_state.all_stock_data
+                    )
+                    st.session_state[research_key] = updated
+                    st.session_state.dim_data[dim] = updated
+
+                    # Re-run AI analysis with enriched data
+                    if claude_client.is_available():
+                        analysis = claude_client.analyze_dimension_deep(dim, updated, topic)
+                        st.session_state[analysis_key] = analysis
+                        st.session_state.dim_data[dim]["ai_analysis"] = analysis
+
+                    # Track for pattern learning
+                    st.session_state.user_actions.append(
+                        f"维度「{dim}」反馈补充: {feedback}"
+                    )
+                    st.session_state[refinement_count_key] = refine_count + 1
+                st.rerun()
+
+        with fb_col2:
+            quick_options = st.selectbox(
+                "快速反馈",
+                ["", "需要更多细节", "缺少同行对比", "需要历史趋势数据",
+                 "缺少季度数据", "需要管理层评述", "数据时效性不够新",
+                 "需要风险因素", "缺少定量数据"],
+                key=f"quick_fb_{dim}_{refine_count}"
+            )
+            if quick_options and st.button("用这个反馈搜索"):
+                with st.spinner(f"根据反馈补充搜索: {quick_options}..."):
+                    from data_collector import refine_dimension
+                    updated = refine_dimension(
+                        existing_result=research,
+                        feedback=quick_options,
+                        topic=topic,
+                        dimension=dim,
+                        ticker=ticker,
+                        all_stock_data=st.session_state.all_stock_data
+                    )
+                    st.session_state[research_key] = updated
+                    st.session_state.dim_data[dim] = updated
+
+                    if claude_client.is_available():
+                        analysis = claude_client.analyze_dimension_deep(dim, updated, topic)
+                        st.session_state[analysis_key] = analysis
+                        st.session_state.dim_data[dim]["ai_analysis"] = analysis
+
+                    st.session_state.user_actions.append(
+                        f"维度「{dim}」快速反馈: {quick_options}"
+                    )
+                    st.session_state[refinement_count_key] = refine_count + 1
+                st.rerun()
 
     # --- Manual supplement ---
     with st.expander("手动补充数据"):
@@ -433,7 +560,7 @@ elif step == 2:
 
     # --- Approval ---
     st.divider()
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("数据可用，下一个维度", type="primary"):
             if manual_data:
@@ -448,7 +575,7 @@ elif step == 2:
                 st.session_state.dim_data[dim]["manual"] = manual_entries
 
             st.session_state.user_actions.append(
-                f"维度「{dim}」审批通过 | 数据源: {total_sources}条 | 质量: {completeness}"
+                f"维度「{dim}」审批通过 | 数据源: {total_sources}条 | 迭代: {refine_count}次 | 质量: {completeness}"
             )
             st.session_state.current_dim_idx += 1
             st.rerun()
@@ -457,10 +584,6 @@ elif step == 2:
             st.session_state.user_actions.append(f"跳过维度「{dim}」")
             st.session_state.current_dim_idx += 1
             st.rerun()
-    with col3:
-        note = st.text_input("需要补充：", key=f"note_{dim}", placeholder="还需要查什么")
-        if note:
-            st.session_state.user_actions.append(f"维度「{dim}」需要补充: {note}")
 
 
 # ---------- Step 3: Pattern Extensions ----------
@@ -706,6 +829,15 @@ elif step == 6:
                 if new_rule_name and new_rule_cond:
                     pm.add_rule(new_rule_name, new_rule_cond, new_rule_action,
                                 confidence="high", notes=new_rule_notes)
+
+                # Store per-dimension feedback from refinement rounds
+                for d in dims:
+                    dim_feedbacks = [a.split("反馈补充: ")[1] for a in st.session_state.user_actions
+                                     if f"维度「{d}」反馈补充:" in a]
+                    dim_feedbacks += [a.split("快速反馈: ")[1] for a in st.session_state.user_actions
+                                      if f"维度「{d}」快速反馈:" in a]
+                    if dim_feedbacks:
+                        pm.add_dimension_feedback(rtype, d, dim_feedbacks)
 
                 # Log session
                 pm.add_session(

@@ -92,14 +92,18 @@ def _call(system: str, user_msg: str, max_tokens: int = 2000) -> str:
 
 def suggest_dimensions(topic: str, research_type: str, existing_dims: list,
                        pattern_context: str = "") -> str:
-    """Given a topic and type, suggest research dimensions."""
+    """Given a topic and type, suggest research dimensions.
+    Returns structured text: one dimension per line, format '维度名称 — 说明'.
+    """
     system = """你是一位资深投资研究助手。根据用户的投资研究主题和类型，推荐应该调研的数据维度。
 
 要求：
-- 每个维度用一行，格式：维度名称 — 简短说明为什么重要
-- 如果有已有的维度列表，在此基础上补充
+- 每个维度一行，严格格式：维度名称 — 简短说明为什么重要
+- 维度名称要简短精确（2-8个字），方便直接作为研究维度使用
+- 如果有已有的维度列表，在此基础上补充，不要重复已有维度
 - 推荐 3-5 个额外维度
 - 不要推荐买卖建议相关的维度
+- 不要加序号、bullet、markdown格式，纯文本每行一个
 - 用中文回答"""
 
     msg = f"""研究主题：{topic}

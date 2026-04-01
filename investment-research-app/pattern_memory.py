@@ -229,6 +229,56 @@ class PatternMemory:
             return {"never_include": [], "never_recommend": []}
         return self.data.get("exclusions", {"never_include": [], "never_recommend": []})
 
+    # --- Dimension Feedback (trainer refinement history) ---
+
+    def add_dimension_feedback(self, research_type: str, dimension: str,
+                                feedback_list: list):
+        """Store trainer feedback for a dimension to improve future searches.
+
+        Args:
+            research_type: e.g. "company_deep_dive"
+            dimension: e.g. "竞争格局"
+            feedback_list: list of feedback strings from the trainer
+        """
+        if not self.data or not feedback_list:
+            return
+        framework = self.data["research_frameworks"].get(research_type)
+        if not framework:
+            return
+        for dim in framework.get("dimensions", []):
+            if dim["name"] == dimension:
+                if "trainer_feedback" not in dim:
+                    dim["trainer_feedback"] = []
+                for fb in feedback_list:
+                    dim["trainer_feedback"].append({
+                        "feedback": fb,
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    })
+                # Keep most recent 20
+                dim["trainer_feedback"] = dim["trainer_feedback"][-20:]
+                self._log_change("dimension_feedback", f"Feedback on '{dimension}': {feedback_list[0][:50]}")
+                return
+        # Dimension not yet in pattern — add it with the feedback
+        framework["dimensions"].append({
+            "name": dimension,
+            "priority": "medium",
+            "description": "",
+            "typical_sources": [],
+            "notes": "",
+            "trainer_feedback": [{"feedback": fb, "date": datetime.now(timezone.utc).strftime("%Y-%m-%d")} for fb in feedback_list],
+        })
+        self._log_change("dimension_feedback_new", f"New dimension '{dimension}' with feedback")
+
+    def get_dimension_feedback(self, research_type: str, dimension: str) -> list:
+        """Get stored trainer feedback for a dimension."""
+        if not self.data:
+            return []
+        framework = self.data["research_frameworks"].get(research_type, {})
+        for dim in framework.get("dimensions", []):
+            if dim["name"] == dimension:
+                return [f["feedback"] for f in dim.get("trainer_feedback", [])]
+        return []
+
     # --- Session History ---
 
     def add_session(self, topic: str, research_type: str, dimensions_used: list,
